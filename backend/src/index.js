@@ -32,3 +32,9 @@ app.use(errorHandler);
 app.listen(PORT, () => {
   console.log(`Silent Earth API listening on port ${PORT}`);
 });
+
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, () => {
+  console.log(`Server running on ${PORT}`);
+});
