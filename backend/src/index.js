@@ -17,7 +17,7 @@ if (!process.env.NODE_ENV) {
 }
 const allowedOrigins = (
   process.env.CORS_ORIGIN ||
-  "http://localhost:5173,http://127.0.0.1:5173,https://silent-earth1.vercel.app"
+  "http://localhost:5173,http://127.0.0.1:5173,https://silent-earth-i4kl.vercel.app"
 )
   .split(",")
   .map((origin) => origin.trim())
