@@ -3,33 +3,47 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// Initialize Firebase Admin using service account credentials from env vars.
-// This avoids committing a service account JSON file to source control.
-if (!admin.apps.length) {
+const hasFirebaseCredentials = Boolean(
+  process.env.FIREBASE_PROJECT_ID &&
+    process.env.FIREBASE_CLIENT_EMAIL &&
+    process.env.FIREBASE_PRIVATE_KEY
+);
+
+let db = null;
+let bucket = null;
+let isFirebaseAvailable = false;
+
+if (!admin.apps.length && hasFirebaseCredentials) {
   const projectId = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   const privateKey = (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
   const storageBucket = process.env.FIREBASE_STORAGE_BUCKET;
 
-  if (projectId && clientEmail && privateKey) {
-    admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId,
-        clientEmail,
-        privateKey,
-      }),
-      storageBucket,
-    });
-  } else {
-    console.warn(
-      "Firebase credentials are incomplete. Starting without Firebase Admin SDK; database routes will fail until env vars are provided."
-    );
-    admin.initializeApp({
-      projectId: projectId || "demo-project",
-    });
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId,
+      clientEmail,
+      privateKey,
+    }),
+    storageBucket,
+  });
+}
+
+if (admin.apps.length) {
+  try {
+    db = admin.firestore();
+    bucket = admin.storage().bucket();
+    isFirebaseAvailable = true;
+  } catch (error) {
+    console.warn("Firebase Admin SDK could not be initialized fully:", error.message);
   }
 }
 
-export const db = admin.firestore();
-export const bucket = admin.storage().bucket();
+if (!isFirebaseAvailable) {
+  console.warn(
+    "Firebase credentials are not configured. Using in-memory fallback storage so the backend can still run."
+  );
+}
+
+export { db, bucket, isFirebaseAvailable };
 export default admin;

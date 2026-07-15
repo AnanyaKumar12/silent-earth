@@ -1,8 +1,13 @@
 import { v4 as uuidv4 } from "uuid";
-import { db } from "../config/firebase.js";
+import { db, isFirebaseAvailable } from "../config/firebase.js";
 
 const REPORTS_COLLECTION = "reports";
 const USERS_COLLECTION = "users";
+
+const memoryState = {
+  users: new Map(),
+  reports: new Map(),
+};
 
 export const CATEGORIES = [
   "Critical Alert",
@@ -13,13 +18,33 @@ export const CATEGORIES = [
   "Other",
 ];
 
+function getMemoryReports() {
+  return Array.from(memoryState.reports.values()).sort((a, b) => {
+    return new Date(b.timestamp) - new Date(a.timestamp);
+  });
+}
+
 /**
  * Create (or upsert) a lightweight local user record.
  * Since there is no authentication, this is purely informational —
  * it lets responders cross-reference reports by phone number if needed.
  */
 export async function upsertUser({ name, mobileNumber }) {
-  const id = mobileNumber; // mobile number acts as the natural key, no auth involved
+  const id = mobileNumber;
+
+  if (!isFirebaseAvailable || !db) {
+    const existing = memoryState.users.get(id);
+    const payload = {
+      name,
+      mobileNumber,
+      updatedAt: new Date().toISOString(),
+      createdAt: existing?.createdAt || new Date().toISOString(),
+    };
+
+    memoryState.users.set(id, payload);
+    return { id, ...payload };
+  }
+
   const userRef = db.collection(USERS_COLLECTION).doc(id);
   const existing = await userRef.get();
 
@@ -47,11 +72,36 @@ export async function createReport(reportData) {
     timestamp: new Date().toISOString(),
   };
 
+  if (!isFirebaseAvailable || !db) {
+    memoryState.reports.set(id, report);
+    return report;
+  }
+
   await db.collection(REPORTS_COLLECTION).doc(id).set(report);
   return report;
 }
 
 export async function getReports({ category, search } = {}) {
+  if (!isFirebaseAvailable || !db) {
+    let reports = getMemoryReports();
+
+    if (category && category !== "All") {
+      reports = reports.filter((report) => report.category === category);
+    }
+
+    if (search) {
+      const term = search.toLowerCase();
+      reports = reports.filter(
+        (report) =>
+          report.name?.toLowerCase().includes(term) ||
+          report.location?.toLowerCase().includes(term) ||
+          report.description?.toLowerCase().includes(term)
+      );
+    }
+
+    return reports;
+  }
+
   let query = db.collection(REPORTS_COLLECTION).orderBy("timestamp", "desc");
 
   if (category && category !== "All") {
@@ -61,17 +111,13 @@ export async function getReports({ category, search } = {}) {
   const snapshot = await query.get();
   let reports = snapshot.docs.map((doc) => doc.data());
 
-  // Simple in-memory search across name, location, description.
-  // Firestore doesn't support full-text search natively, so for a
-  // production system consider Algolia/Typesense — this is sufficient
-  // for a lightweight community reporting tool.
   if (search) {
     const term = search.toLowerCase();
     reports = reports.filter(
-      (r) =>
-        r.name?.toLowerCase().includes(term) ||
-        r.location?.toLowerCase().includes(term) ||
-        r.description?.toLowerCase().includes(term)
+      (report) =>
+        report.name?.toLowerCase().includes(term) ||
+        report.location?.toLowerCase().includes(term) ||
+        report.description?.toLowerCase().includes(term)
     );
   }
 
@@ -79,18 +125,39 @@ export async function getReports({ category, search } = {}) {
 }
 
 export async function getReportById(id) {
+  if (!isFirebaseAvailable || !db) {
+    return memoryState.reports.get(id) || null;
+  }
+
   const doc = await db.collection(REPORTS_COLLECTION).doc(id).get();
   if (!doc.exists) return null;
   return doc.data();
 }
 
 export async function saveSummary(id, summary) {
+  if (!isFirebaseAvailable || !db) {
+    const existing = memoryState.reports.get(id);
+    if (existing) {
+      const updated = { ...existing, aiSummary: summary };
+      memoryState.reports.set(id, updated);
+    }
+    return;
+  }
+
   await db.collection(REPORTS_COLLECTION).doc(id).update({ aiSummary: summary });
 }
 
 export async function getCategoryCounts() {
+  if (!isFirebaseAvailable || !db) {
+    const counts = Object.fromEntries(CATEGORIES.map((category) => [category, 0]));
+    getMemoryReports().forEach((report) => {
+      if (counts[report.category] !== undefined) counts[report.category] += 1;
+    });
+    return counts;
+  }
+
   const snapshot = await db.collection(REPORTS_COLLECTION).get();
-  const counts = Object.fromEntries(CATEGORIES.map((c) => [c, 0]));
+  const counts = Object.fromEntries(CATEGORIES.map((category) => [category, 0]));
 
   snapshot.docs.forEach((doc) => {
     const { category } = doc.data();
