@@ -19,14 +19,18 @@ if (!admin.apps.length && hasFirebaseCredentials) {
   const privateKey = (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
   const storageBucket = process.env.FIREBASE_STORAGE_BUCKET;
 
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId,
-      clientEmail,
-      privateKey,
-    }),
-    storageBucket,
-  });
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId,
+        clientEmail,
+        privateKey,
+      }),
+      storageBucket,
+    });
+  } catch (error) {
+    console.warn("Firebase initialization failed:", error.message);
+  }
 }
 
 if (admin.apps.length) {

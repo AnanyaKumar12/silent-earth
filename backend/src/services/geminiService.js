@@ -3,9 +3,16 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const genAI = process.env.GEMINI_API_KEY
-  ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-  : null;
+let genAI = null;
+
+try {
+  genAI = process.env.GEMINI_API_KEY
+    ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+    : null;
+} catch (error) {
+  console.warn("Gemini client could not be initialized:", error.message);
+  genAI = null;
+}
 
 /**
  * Generate a concise 1-2 sentence emergency summary using Gemini.
