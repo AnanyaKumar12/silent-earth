@@ -9,18 +9,39 @@ import { notFoundHandler, errorHandler } from "./middleware/errorHandler.js";
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const port = Number(process.env.PORT) || 5000;
+const host = process.env.HOST || "0.0.0.0";
+const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173,http://127.0.0.1:5173")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "http://localhost:5173",
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(null, false);
+    },
+    credentials: true,
   })
 );
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.get("/api/health", (req, res) => {
-  res.json({ success: true, message: "Silent Earth API is running" });
+  res.status(200).json({
+    success: true,
+    message: "Silent Earth API is running",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get("/", (_req, res) => {
+  res.send("Silent Earth backend is running");
 });
 
 app.use("/api/users", userRoutes);
@@ -29,12 +50,8 @@ app.use("/api/reports", reportRoutes);
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`Silent Earth API listening on port ${PORT}`);
+const server = app.listen(port, host, () => {
+  console.log(`Silent Earth API listening on ${host}:${port}`);
 });
 
-const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, () => {
-  console.log(`Server running on ${PORT}`);
-});
+export { app, server };
